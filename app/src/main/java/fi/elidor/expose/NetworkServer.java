@@ -1,5 +1,7 @@
 package fi.elidor.expose;
 
+import android.util.Log;
+
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -32,12 +34,21 @@ public class NetworkServer extends Thread {
     }
 
     public void close() {
+        Log.d("NETWORK", "server close");
         try {
             serverSocket.close();
         } catch (IOException e) {}
+
+        try {
+            sendQueue.put("END");
+            this.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
     }
 
     public void publish(HashMap data) {
+        Log.d("send_main", "publishing");
         try {
             sendQueue.put(data);
         } catch (InterruptedException e) {
@@ -115,10 +126,26 @@ public class NetworkServer extends Thread {
             try {
                 while(true) {
                     Object data = sendQueue.take();
+
+                    if(data instanceof String && data.equals("END")) {
+                        for (Iterator<Socket> it = clients.iterator(); it.hasNext(); ) {
+                            Socket socket = it.next();
+                            try {
+                                socket.close();
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                            Log.d("NETWORK", "Closed " + socket.toString());
+                        }
+                        return;
+                    }
+
                     String json = toJson(data);
+                    Log.d("NETWORK", "new packet for sending");
 
                     for (Iterator<Socket> it = clients.iterator(); it.hasNext(); ) {
                         Socket socket = it.next();
+                        Log.d("NETWORK", "Sending to " + socket.toString());
                         try {
                             DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
                             dos.writeByte(json.length() / 256);
@@ -126,9 +153,11 @@ public class NetworkServer extends Thread {
                             dos.writeBytes(json);
                             dos.flush();
                         } catch (IOException e) {
+                            Log.d("NETWORK", "Cannot write " + e.toString());
                             try {
                                 socket.close();
                             } catch (IOException e1) {
+                                Log.d("NETWORK", "Cannot close socket " + e1.toString());
                             }
                             it.remove();
                         }

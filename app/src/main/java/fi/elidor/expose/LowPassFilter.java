@@ -5,10 +5,16 @@ package fi.elidor.expose;
  */
 
 public class LowPassFilter {
-    private final double ALPHA = 0.2f;
+    private double ALPHA = 0.2f;
 
     private boolean initialized = false;
     public double value = 0.0;
+
+    public LowPassFilter() {}
+
+    public LowPassFilter(double alpha) {
+        ALPHA = alpha;
+    }
 
     public  void update(double input) {
         if(!initialized) {

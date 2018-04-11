@@ -19,7 +19,7 @@
                 android:id="@+id/azimuth_title"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Azimuth" />
+                android:text="@string/azimuth" />
 
             <TextView
                 android:id="@+id/azimuth"
@@ -35,7 +35,7 @@
                 android:id="@+id/pitch_title"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Pitch" />
+                android:text="@string/pitch" />
 
             <TextView
                 android:id="@+id/pitch"
@@ -51,7 +51,7 @@
                 android:id="@+id/roll_title"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Roll" />
+                android:text="@string/roll" />
 
             <TextView
                 android:id="@+id/roll"
@@ -67,7 +67,7 @@
                 android:id="@+id/speed_title"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Speed" />
+                android:text="@string/speed" />
 
             <TextView
                 android:id="@+id/speed"
@@ -88,7 +88,7 @@
                 android:id="@+id/altitude_title"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Altitude" />
+                android:text="@string/altitude" />
 
             <TextView
                 android:id="@+id/altitude"
@@ -109,7 +109,7 @@
                 android:id="@+id/bearing_title"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Bearing" />
+                android:text="@string/bearing" />
 
             <TextView
                 android:id="@+id/bearing"
@@ -127,10 +127,10 @@
             android:layout_height="match_parent" >
 
             <TextView
-                android:id="@+id/title_position"
+                android:id="@+id/latitude_title"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Position" />
+                android:text="@string/latitude" />
 
             <TextView
                 android:id="@+id/latitude"
@@ -138,12 +138,29 @@
                 android:layout_height="wrap_content" />
 
             <TextView
+                android:id="@+id/horizontal_accuracy"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+
+        </TableRow>
+
+        <TableRow
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" >
+
+            <TextView
+                android:id="@+id/longitude_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/longitude" />
+
+            <TextView
                 android:id="@+id/longitude"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content" />
 
             <TextView
-                android:id="@+id/horizontal_accuracy"
+                android:id="@+id/horizontal_accuracy2"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content" />
         </TableRow>

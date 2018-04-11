@@ -91,7 +91,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         lpAzimuth = new LowPassFilter(),
         lpPitch = new LowPassFilter(),
         lpRoll = new LowPassFilter(),
-        lpSpeed = new LowPassFilter(),
+        lpSpeed = new LowPassFilter(0.5),
         lpSpeedAccuracy = new LowPassFilter(),
         lpAltitude = new LowPassFilter(),
         lpVerticalAccuracy = new LowPassFilter(),
@@ -168,10 +168,12 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         networkServer = new NetworkServer("192.168.43.1", 3451);
         networkServer.start();
 
-        mSensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_NORMAL, SensorManager.SENSOR_DELAY_UI);
-        mSensorManager.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_NORMAL, SensorManager.SENSOR_DELAY_UI);
+        mSensorManager.registerListener(this, accelerometer, 1000*250, 1000*100);
+        mSensorManager.registerListener(this, magnetometer, 1000*250, 1000*100);
+//        mSensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_NORMAL, 1000*500);
+//        mSensorManager.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_NORMAL, 1000*500);
 
-        locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, this);
+        locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 500, 1, this);
 
         handler.postDelayed(sensorPublisher, 1000);
     }
