@@ -66,6 +66,7 @@ public class MainActivity extends AppCompatActivity {
                 this,
                 new String[] {
                         Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.WAKE_LOCK,
                         Manifest.permission.INTERNET
                 }, 0);
 

@@ -10,7 +10,7 @@ import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.Bundle;
-import android.os.PowerManager;
+import android.os.HandlerThread;
 import android.util.Log;
 
 import java.io.DataOutputStream;
@@ -23,17 +23,18 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.Map;
-import java.util.concurrent.LinkedBlockingQueue;
 
 
 public class SensorPublisherServer extends Thread{
+    private final Object lock = new Object();
     private static final String TAG = "SENSOR_PUB_SRV";
     private final String IP = "192.168.43.1";
     private final int PORT = 3451;
 
+    private Sender sender;
+
     private ServerSocket serverSocket;
     private LinkedList<Socket> clients = new LinkedList<>();
-    private LinkedBlockingQueue<Object> sendQueue = new LinkedBlockingQueue<>();
 
     private SensorManager sensorService;
     private LocationManager locationService;
@@ -48,39 +49,36 @@ public class SensorPublisherServer extends Thread{
     private final float[] orientationAngles = new float[3];
 
     SensorPublisherServer(Context ctx) {
-        PowerManager powerManager = (PowerManager) ctx.getSystemService(ctx.POWER_SERVICE);
-        PowerManager.WakeLock wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,
-                "MyWakelockTag");
-        wakeLock.acquire();
-
         sensorService = (SensorManager) ctx.getSystemService(Context.SENSOR_SERVICE);
 
         accelerometer = sensorService.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
         magnetometer = sensorService.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
 
         locationService = (LocationManager) ctx.getSystemService(Context.LOCATION_SERVICE);
-
-        // mSensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_NORMAL, 1000*500);
-        // mSensorManager.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_NORMAL, 1000*500);
     }
 
     @SuppressLint("MissingPermission")
     @Override
     public void run() {
-        Sender sender = new Sender();
+        sender = new Sender();
         sender.start();
+
+        HandlerThread ht = new HandlerThread("SHAIBAA");
+        ht.start();
 
         try {
             serverSocket = new ServerSocket(PORT, 5, InetAddress.getByName(IP));
 
             while(true) {
                 Socket socket = serverSocket.accept();
-                if(clients.isEmpty()) {
-                    sensorService.registerListener(sender, accelerometer, 1000*250, 1000*100);
-                    sensorService.registerListener(sender, magnetometer, 1000*250, 1000*100);
-                    locationService.requestLocationUpdates(LocationManager.GPS_PROVIDER, 500, 1, sender);
+                synchronized(lock) {
+                    if (clients.isEmpty()) {
+                        sensorService.registerListener(sender, accelerometer, 1000 * 500, 1000 * 500);
+                        sensorService.registerListener(sender, magnetometer, 1000 * 500, 1000 * 500);
+                        locationService.requestLocationUpdates(LocationManager.GPS_PROVIDER, 500, 1, sender, ht.getLooper());
+                    }
+                    clients.add(socket);
                 }
-                clients.add(socket);
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -93,8 +91,8 @@ public class SensorPublisherServer extends Thread{
         } catch (IOException ignored) {}
 
         try {
-            sendQueue.put("END");
-            this.join();
+            sender.interrupt();
+            sender.join();
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
@@ -109,24 +107,18 @@ public class SensorPublisherServer extends Thread{
                 lpSpeedAccuracy = new LowPassFilter(),
                 lpAltitude = new LowPassFilter(),
                 lpVerticalAccuracy = new LowPassFilter(),
-                lpLatitude = new LowPassFilter(),
-                lpLongitude = new LowPassFilter(),
+                lpLatitude = new LowPassFilter(0.5),
+                lpLongitude = new LowPassFilter(0.5),
                 lpHorizontalAccuracy = new LowPassFilter(),
-                lpBearing = new LowPassFilter(),
+                lpBearing = new LowPassFilter(0.5),
                 lpBearingAccuracy = new LowPassFilter();
 
         @Override
         public void run() {
             try {
                 while(true) {
-                    Object data = sendQueue.take();
-
-                    if(data instanceof String && data.equals("END")) {
-                        shutdown();
-                        return;
-                    }
-
-                    transmitToAllClients(data);
+                    transmitToAllClients(getData());
+                    Thread.sleep(500);
                 }
             } catch(InterruptedException ignored) {}
         }
@@ -134,6 +126,7 @@ public class SensorPublisherServer extends Thread{
         private void transmitToAllClients(Object data) {
             String json = toJson(data);
 
+            boolean removed = false;
             for (Iterator<Socket> it = clients.iterator(); it.hasNext(); ) {
                 Socket socket = it.next();
                 try {
@@ -150,12 +143,15 @@ public class SensorPublisherServer extends Thread{
                         Log.d("NETWORK", "Cannot close socket " + e1.toString());
                     }
                     it.remove();
+                    removed = true;
                 }
             }
 
-            if(clients.isEmpty()) {
-                sensorService.unregisterListener(this);
-                locationService.removeUpdates(this);
+            synchronized (lock) {
+                if (removed && clients.isEmpty()) {
+                    sensorService.unregisterListener(this);
+                    locationService.removeUpdates(this);
+                }
             }
         }
 
@@ -169,7 +165,14 @@ public class SensorPublisherServer extends Thread{
             }
         }
 
-        private void publish() {
+        private HashMap<String, Object> getData() {
+            SensorManager.getRotationMatrix(mRotationMatrix, null, accelerometerReading, magnetometerReading);
+            SensorManager.getOrientation(mRotationMatrix, orientationAngles);
+
+            lpAzimuth.update(orientationAngles[0]);
+            lpPitch.update(orientationAngles[1]);
+            lpRoll.update(orientationAngles[2]);
+
             HashMap<String, Object> root = new HashMap<>();
 
             HashMap<String, Object> data = new HashMap<>();
@@ -190,34 +193,22 @@ public class SensorPublisherServer extends Thread{
             data.put("horizontal_accuracy", Math.round(lpHorizontalAccuracy.value));
             root.put("location", data);
 
-            try {
-                sendQueue.put(root);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
+            return root;
         }
 
         @Override
         public void onSensorChanged(SensorEvent event) {
-            if (event.sensor == accelerometer) {
-                System.arraycopy(event.values, 0, accelerometerReading,0, accelerometerReading.length);
-            }
             if (event.sensor == magnetometer) {
                 System.arraycopy(event.values, 0, magnetometerReading,0, magnetometerReading.length);
             }
-
-            SensorManager.getRotationMatrix(mRotationMatrix, null, accelerometerReading, magnetometerReading);
-            SensorManager.getOrientation(mRotationMatrix, orientationAngles);
-
-            lpAzimuth.update(orientationAngles[0]);
-            lpPitch.update(orientationAngles[1]);
-            lpRoll.update(orientationAngles[2]);
-
-            publish();
+            if (event.sensor == accelerometer) {
+                System.arraycopy(event.values, 0, accelerometerReading,0, accelerometerReading.length);
+            }
         }
 
         @Override
         public void onLocationChanged(Location location) {
+            Log.d("SNSRPUBSRV", "Loc: " + location);
             lpSpeed.update(location.getSpeed());
             //lpSpeedAccuracy.update(location.getSpeedAccuracyMetersPerSecond());
             lpAltitude.update(location.getAltitude());
@@ -227,8 +218,6 @@ public class SensorPublisherServer extends Thread{
             lpHorizontalAccuracy.update(location.getAccuracy());
             lpBearing.update(location.getBearing());
             //lpBearingAccuracy.update(location.getBearingAccuracyDegrees());
-
-            publish();
         }
 
         @Override
