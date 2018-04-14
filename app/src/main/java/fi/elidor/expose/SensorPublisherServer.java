@@ -27,7 +27,7 @@ import java.util.Map;
 
 public class SensorPublisherServer extends Thread{
     private final Object lock = new Object();
-    private static final String TAG = "SENSOR_PUB_SRV";
+    private static final String TAG = "SENSOR_PUBLISHER_SERVER";
     private final String IP = "192.168.43.1";
     private final int PORT = 3451;
 
@@ -61,9 +61,8 @@ public class SensorPublisherServer extends Thread{
     @Override
     public void run() {
         sender = new Sender();
-        sender.start();
 
-        HandlerThread ht = new HandlerThread("SHAIBAA");
+        HandlerThread ht = new HandlerThread("ExposeLocationUpdateHandlerThread");
         ht.start();
 
         try {
@@ -76,6 +75,7 @@ public class SensorPublisherServer extends Thread{
                         sensorService.registerListener(sender, accelerometer, 1000 * 500, 1000 * 500);
                         sensorService.registerListener(sender, magnetometer, 1000 * 500, 1000 * 500);
                         locationService.requestLocationUpdates(LocationManager.GPS_PROVIDER, 500, 1, sender, ht.getLooper());
+                        new Thread(sender).start();
                     }
                     clients.add(socket);
                 }
@@ -85,20 +85,16 @@ public class SensorPublisherServer extends Thread{
         }
     }
 
-    void close() {
+    public void close() {
         try {
             serverSocket.close();
         } catch (IOException ignored) {}
 
-        try {
-            sender.interrupt();
-            sender.join();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
+        sender.shutdown();
     }
 
-    private class Sender extends Thread implements SensorEventListener, LocationListener {
+    private class Sender implements Runnable, SensorEventListener, LocationListener {
+
         private LowPassFilter
                 lpAzimuth = new LowPassFilter(),
                 lpPitch = new LowPassFilter(),
@@ -113,11 +109,31 @@ public class SensorPublisherServer extends Thread{
                 lpBearing = new LowPassFilter(0.5),
                 lpBearingAccuracy = new LowPassFilter();
 
+        void shutdown() {
+            for (Socket socket : clients) {
+                try {
+                    socket.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+
         @Override
         public void run() {
             try {
                 while(true) {
                     transmitToAllClients(getData());
+
+                    synchronized (lock) {
+                        if (clients.isEmpty()) {
+                            sensorService.unregisterListener(this);
+                            locationService.removeUpdates(this);
+
+                            return;
+                        }
+                    }
+
                     Thread.sleep(500);
                 }
             } catch(InterruptedException ignored) {}
@@ -126,7 +142,6 @@ public class SensorPublisherServer extends Thread{
         private void transmitToAllClients(Object data) {
             String json = toJson(data);
 
-            boolean removed = false;
             for (Iterator<Socket> it = clients.iterator(); it.hasNext(); ) {
                 Socket socket = it.next();
                 try {
@@ -143,24 +158,6 @@ public class SensorPublisherServer extends Thread{
                         Log.d("NETWORK", "Cannot close socket " + e1.toString());
                     }
                     it.remove();
-                    removed = true;
-                }
-            }
-
-            synchronized (lock) {
-                if (removed && clients.isEmpty()) {
-                    sensorService.unregisterListener(this);
-                    locationService.removeUpdates(this);
-                }
-            }
-        }
-
-        private void shutdown() {
-            for (Socket socket : clients) {
-                try {
-                    socket.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
                 }
             }
         }
